@@ -1,0 +1,10 @@
+* Project setup
+  * npm i @babel/cli,
+  * npm install --save-dev @babel/preset-env
+  // for refrence link: https://graphql-demo.mead.io/
+
+// Topic
+
+1. Scaller Type
+  * String, Boolean, Int, Float, ID
+  * ! => not accept null value, means required
