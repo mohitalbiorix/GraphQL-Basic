@@ -3,8 +3,14 @@
   * npm install --save-dev @babel/preset-env
   // for refrence link: https://graphql-demo.mead.io/
 
+  * npm i uuid =>for generate dynamic random id
+
 // Topic
 
 1. Scaller Type
   * String, Boolean, Int, Float, ID
   * ! => not accept null value, means required
+
+2. Mutation
+  * Mutation is a GraphQL Operation that allows you to insert new data or modify the existing data on the server-side. You can think of GraphQL Mutations as the equivalent of POST , PUT , PATCH and DELETE requests in REST.
+  * We can create a input filed for pass arguments in mutation.
