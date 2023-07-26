@@ -1,7 +1,13 @@
+const { PubSub } = require("graphql-subscriptions");
 const { createYoga } = require("graphql-yoga");
 const { createSchema } = require("graphql-yoga");
+const { error } = require("node:console");
 const { createServer } = require("node:http");
 const { v4: uuidv4 } = require("uuid");
+
+// for subscription
+
+const pubsub = new PubSub();
 
 // users array
 let users = [
@@ -158,6 +164,28 @@ const schema = createSchema({
     input updateCommentInput {
       text: String
     }
+
+    type Subscription {
+      count: Int!
+      comment(postId: ID!): CommentSubscriptionPayload!
+      post: PostSubscriptionPayload!
+    }
+
+    enum MutationType {
+      CREATED
+      UPDATED
+      DELETED
+    }
+
+    type PostSubscriptionPayload {
+      mutation: MutationType!
+      data: Post!
+    }
+
+    type CommentSubscriptionPayload {
+      mutation: MutationType!
+      data: Comment!
+    }
   `,
   resolvers: {
     Query: {
@@ -241,6 +269,15 @@ const schema = createSchema({
           ...args.data,
         };
         posts.push(post);
+
+        // publish post for post subscriber
+        pubsub.publish("post", {
+          post: {
+            mutation: "CREATED",
+            data: post,
+          },
+        });
+
         return post;
       },
       createComment: (parent, args, ctx, info) => {
@@ -256,6 +293,13 @@ const schema = createSchema({
         };
 
         comments.push(comment);
+        // published data for comment Subscription
+        pubsub.publish(`comment ${args.data.post}`, {
+          comment: {
+            mutation: "CREATED",
+            data: comment,
+          },
+        });
         return comment;
       },
       deleteUser: (parent, args, ctx, info) => {
@@ -282,10 +326,17 @@ const schema = createSchema({
           throw new Error("Post not found");
         }
 
-        const deletedPosts = posts.splice(postIndex, 1);
+        const [deletedPost] = posts.splice(postIndex, 1);
 
         comments = comments.filter((comment) => comment.post !== args.id);
-        return deletedPosts[0];
+
+        pubsub.publish("post", {
+          post: {
+            mutation: "DELETED",
+            data: deletedPost,
+          },
+        });
+        return deletedPost;
       },
 
       deleteComment(parent, args, ctx, info) {
@@ -297,9 +348,16 @@ const schema = createSchema({
           throw new Error("Comment not found");
         }
 
-        const deletedComments = comments.splice(commentIndex, 1);
+        const [deletedComment] = comments.splice(commentIndex, 1);
 
-        return deletedComments[0];
+        pubsub.publish(`comment ${deletedComment.post}`, {
+          comment: {
+            mutation: "DELETED",
+            data: deletedComment,
+          },
+        });
+
+        return deletedComment;
       },
 
       updateUser(parent, args, ctx, info) {
@@ -337,19 +395,67 @@ const schema = createSchema({
           post.published = data.published;
         }
 
+        pubsub.publish("post", {
+          post: {
+            mutation: "UPDATED",
+            data: post,
+          },
+        });
+
         return post;
       },
 
       updateComment(parent, args, ctx, info) {
         const { id, data } = args;
-        const commment = comments.find((comment) => comment.id === id);
-        if (!commment) {
+        const comment = comments.find((comment) => comment.id === id);
+        if (!comment) {
           throw new Error("Comment Not Found");
         }
         if (typeof data.text === "string") {
-          commment.text = data.text;
+          comment.text = data.text;
         }
+
+        pubsub.publish(`comment ${comment.post}`, {
+          comment: {
+            mutation: "UPDATED",
+            data: comment,
+          },
+        });
+
         return commment;
+      },
+    },
+    Subscription: {
+      count: {
+        subscribe: (parent, args, contex, info) => {
+          let count = 0;
+          setInterval(() => {
+            count++;
+            // for published data
+            pubsub.publish("count", {
+              count,
+            });
+          }, 1000);
+          return pubsub.asyncIterator("count");
+        },
+      },
+      comment: {
+        subscribe: (parent, args, contex, info) => {
+          const post = posts.find(
+            (post) => post.id === args.postId && post.published
+          );
+
+          if (!post) {
+            throw new Error("Post Not Found");
+          }
+
+          return pubsub.asyncIterator(`comment ${args.postId}`);
+        },
+      },
+      post: {
+        subscribe: (parent, args, contex, info) => {
+          return pubsub.asyncIterator("post");
+        },
       },
     },
   },
